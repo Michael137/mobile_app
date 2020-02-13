@@ -18,27 +18,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "cpp/backend.h"
 #include "cpp/utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/tflite_inference_stage.h"
+#include "tensorflow/lite/tools/evaluation/utils.h"
 
 namespace mlperf {
 namespace mobile {
 namespace {
-// Convert string to Delegate.
-inline tflite::evaluation::TfliteInferenceParams::Delegate Str2Delegate(
-    const std::string& delegate) {
-  if (absl::AsciiStrToLower(delegate) == "gpu") {
-    return tflite::evaluation::TfliteInferenceParams::GPU;
-  } else if (absl::AsciiStrToLower(delegate) == "nnapi") {
-    return tflite::evaluation::TfliteInferenceParams::NNAPI;
-  }
-  return tflite::evaluation::TfliteInferenceParams::NONE;
-}
-
 // Convert TfLiteType to DataType.
 inline DataType::Type TfType2DataType(TfLiteType type) {
   switch (type) {
@@ -59,7 +49,7 @@ inline DataType::Type TfType2DataType(TfLiteType type) {
 }  // namespace
 
 TfliteBackend::TfliteBackend(const std::string& model_file_path,
-                             int num_threads, const std::string& delegate) {
+                             int num_threads) {
   tflite::evaluation::EvaluationStageConfig inference_config;
   inference_config.set_name("inference_stage");
   auto* inference_params = inference_config.mutable_specification()
@@ -67,13 +57,13 @@ TfliteBackend::TfliteBackend(const std::string& model_file_path,
   inference_params->set_invocations_per_run(1);
   inference_params->set_model_file_path(model_file_path);
   inference_params->set_num_threads(num_threads);
-  inference_params->set_delegate(Str2Delegate(delegate));
 
   inference_stage_.reset(
       new tflite::evaluation::TfliteInferenceStage(inference_config));
   if (inference_stage_->Init() != kTfLiteOk) {
     LOG(FATAL) << "Init inference stage failed";
   }
+
   // Collect input and output formats.
   const tflite::evaluation::TfLiteModelInfo* model_info =
       inference_stage_->GetModelInfo();
@@ -85,6 +75,43 @@ TfliteBackend::TfliteBackend(const std::string& model_file_path,
     output_format_.emplace_back(TfType2DataType(output->type),
                                 tflite::NumElements(output));
   }
+}
+
+TfLiteStatus TfliteBackend::ApplyDelegate(const std::string& delegate) {
+  tflite::Interpreter::TfLiteDelegatePtr delegate_ptr(nullptr,
+                                                      [](TfLiteDelegate*) {});
+  if (absl::StartsWithIgnoreCase(delegate, "gpu")) {
+    TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
+    gpu_opts.inference_preference =
+        TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
+    gpu_opts.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+    gpu_opts.inference_priority2 =
+        TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
+    gpu_opts.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+
+    delegate_ptr = tflite::evaluation::CreateGPUDelegate(&gpu_opts);
+  } else if (absl::StartsWithIgnoreCase(delegate, "nnapi")) {
+    tflite::StatefulNnApiDelegate::Options options;
+    options.execution_preference =
+        tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
+    std::string accelerator_name = absl::StrContains(delegate, "-")
+                                       ? delegate.substr(delegate.find('-'))
+                                       : std::string();
+    if (!accelerator_name.empty()) {
+      options.accelerator_name = accelerator_name.c_str();
+    }
+    delegate_ptr = tflite::evaluation::CreateNNAPIDelegate(options);
+  } else if (absl::EqualsIgnoreCase(delegate, "hexagon")) {
+    delegate_ptr =
+        tflite::evaluation::CreateHexagonDelegate(std::string(), false);
+  }
+
+  if (inference_stage_->ApplyCustomDelegate(std::move(delegate_ptr)) !=
+      kTfLiteOk) {
+    LOG(ERROR) << "Applying delegate failed";
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
 std::vector<void*> TfliteBackend::GetPredictedOutputs() {

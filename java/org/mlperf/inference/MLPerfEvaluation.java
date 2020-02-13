@@ -21,13 +21,17 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
+import android.graphics.Color;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
 import android.os.Messenger;
+import android.text.SpannableString;
+import android.text.Spanned;
 import android.text.method.ScrollingMovementMethod;
+import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 import android.view.View;
 import android.view.Window;
@@ -182,6 +186,19 @@ public class MLPerfEvaluation extends AppCompatActivity implements Handler.Callb
       case RunMLPerfWorker.REPLY_COMPLETE:
         ResultHolder result = (ResultHolder) inputMessage.obj;
         addNewResult(result);
+        progressCount.increaseProgress();
+        break;
+      case RunMLPerfWorker.REPLY_ERROR:
+        String error = (String) inputMessage.obj;
+        // Set the color of error messages to red.
+        SpannableString sb = new SpannableString(error);
+        sb.setSpan(
+            new ForegroundColorSpan(Color.RED),
+            0,
+            error.length(),
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        taskResultText.append(System.getProperty("line.separator"));
+        taskResultText.append(sb);
         progressCount.increaseProgress();
         break;
       case RunMLPerfWorker.REPLY_CANCEL:

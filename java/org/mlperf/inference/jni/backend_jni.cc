@@ -33,8 +33,11 @@ JNIEXPORT jlong JNICALL Java_org_mlperf_inference_MLPerfDriverWrapper_tflite(
 
   // Create a new TfliteBackend object.
   std::unique_ptr<mlperf::mobile::TfliteBackend> backend_ptr(
-      new mlperf::mobile::TfliteBackend(model_file_path, num_threads,
-                                        delegate));
+      new mlperf::mobile::TfliteBackend(model_file_path, num_threads));
+  if (backend_ptr->ApplyDelegate(delegate) != 0) {
+    env->ThrowNew(env->FindClass("java/lang/Exception"),
+                  "failed to apply delegate");
+  }
   return reinterpret_cast<jlong>(backend_ptr.release());
 }
 
