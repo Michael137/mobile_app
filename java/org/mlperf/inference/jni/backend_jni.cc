@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "cpp/backends/tflite.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -47,6 +48,37 @@ Java_org_mlperf_inference_MLPerfDriverWrapper_nativeDeleteBackend(
   if (handle != 0) {
     delete reinterpret_cast<mlperf::mobile::Backend*>(handle);
   }
+}
+
+JNIEXPORT jobject JNICALL
+Java_org_mlperf_inference_MLPerfDriverWrapper_listDevicesForNNAPI(
+    JNIEnv* env, jclass clazz) {
+  jclass java_util_ArrayList = env->FindClass("java/util/ArrayList");
+  jmethodID java_util_ArrayList_init =
+      env->GetMethodID(java_util_ArrayList, "<init>", "(I)V");
+  jmethodID java_util_ArrayList_add =
+      env->GetMethodID(java_util_ArrayList, "add", "(Ljava/lang/Object;)Z");
+  const NnApi* nnapi = NnApiImplementation();
+
+  if (nnapi->ANeuralNetworks_getDeviceCount != nullptr) {
+    uint32_t num_devices = 0;
+    NnApiImplementation()->ANeuralNetworks_getDeviceCount(&num_devices);
+
+    jobject results = env->NewObject(java_util_ArrayList,
+                                     java_util_ArrayList_init, num_devices);
+
+    for (uint32_t i = 0; i < num_devices; i++) {
+      ANeuralNetworksDevice* device = nullptr;
+      const char* buffer = nullptr;
+      nnapi->ANeuralNetworks_getDevice(i, &device);
+      nnapi->ANeuralNetworksDevice_getName(device, &buffer);
+      jstring device_name = env->NewStringUTF(buffer);
+      env->CallBooleanMethod(results, java_util_ArrayList_add, device_name);
+      env->DeleteLocalRef(device_name);
+    }
+    return results;
+  }
+  return env->NewObject(java_util_ArrayList, java_util_ArrayList_init, 0);
 }
 
 #ifdef __cplusplus

@@ -78,32 +78,31 @@ TfliteBackend::TfliteBackend(const std::string& model_file_path,
 }
 
 TfLiteStatus TfliteBackend::ApplyDelegate(const std::string& delegate) {
+  LOG(INFO) << "Applying delegate: " << delegate;
   tflite::Interpreter::TfLiteDelegatePtr delegate_ptr(nullptr,
                                                       [](TfLiteDelegate*) {});
-  if (absl::StartsWithIgnoreCase(delegate, "gpu")) {
+  if (absl::StartsWithIgnoreCase(delegate, "GPU")) {
     TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
     gpu_opts.inference_preference =
         TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
-    gpu_opts.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
-    gpu_opts.inference_priority2 =
-        TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
-    gpu_opts.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
-
+    if (absl::EqualsIgnoreCase(delegate, "GPU (F16)")) {
+      gpu_opts.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+    } else {
+      gpu_opts.inference_priority1 =
+          TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+    }
     delegate_ptr = tflite::evaluation::CreateGPUDelegate(&gpu_opts);
   } else if (absl::StartsWithIgnoreCase(delegate, "nnapi")) {
     tflite::StatefulNnApiDelegate::Options options;
     options.execution_preference =
         tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
     std::string accelerator_name = absl::StrContains(delegate, "-")
-                                       ? delegate.substr(delegate.find('-'))
+                                       ? delegate.substr(delegate.find('-') + 1)
                                        : std::string();
     if (!accelerator_name.empty()) {
       options.accelerator_name = accelerator_name.c_str();
     }
     delegate_ptr = tflite::evaluation::CreateNNAPIDelegate(options);
-  } else if (absl::EqualsIgnoreCase(delegate, "hexagon")) {
-    delegate_ptr =
-        tflite::evaluation::CreateHexagonDelegate(std::string(), false);
   }
 
   if (inference_stage_->ApplyCustomDelegate(std::move(delegate_ptr)) !=
@@ -112,7 +111,7 @@ TfLiteStatus TfliteBackend::ApplyDelegate(const std::string& delegate) {
     return kTfLiteError;
   }
   return kTfLiteOk;
-}
+}  // namespace mobile
 
 std::vector<void*> TfliteBackend::GetPredictedOutputs() {
   std::vector<void*> outputs;

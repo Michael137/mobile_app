@@ -44,7 +44,8 @@
 
   <!-- Values for delegate setting -->
   <string name="delegate_none" description="CPU [CHAR_LIMIT=50]">None</string>
-  <string name="delegate_gpu" description="GPU [CHAR_LIMIT=50]">GPU</string>
+  <string name="delegate_gpu" description="GPU [CHAR_LIMIT=50]">GPU (F32)</string>
+  <string name="delegate_gpu_f16" description="GPU F16 [CHAR_LIMIT=50]">GPU (F16)</string>
   <string name="delegate_nnapi" description="NNAPI [CHAR_LIMIT=50]">NNAPI</string>
 
   <!-- Values for log info setting -->
