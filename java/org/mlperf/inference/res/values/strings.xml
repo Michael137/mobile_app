@@ -12,10 +12,13 @@
 
   <!-- Strings related to Settings -->
   <string name="pref_delegate_setting" description="Delegates Setting [CHAR_LIMIT=50]">
-    Accelerator
+    Accelerators
   </string>
   <string name="pref_delegate_key" description="Delegates Pref Key [CHAR_LIMIT=50]">
     delegate_preference
+  </string>
+  <string name="pref_delegate_sum" description="Delegates Pref Summary [CHAR_LIMIT=50]">
+    Accelerators for TFLite
   </string>
   <string name="num_threads_settings" description="Number of threads setting [CHAR_LIMIT=50]">
     Number of Threads

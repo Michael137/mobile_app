@@ -77,7 +77,7 @@ public class MLPerfEvaluation extends AppCompatActivity implements Handler.Callb
   private final ArrayList<ResultHolder> results = new ArrayList<>();
   private final HashMap<String, Integer> resultMap = new HashMap<>();
 
-  private String interpreterDelegate;
+  private Set<String> delegates;
   private int numThreadsPreference;
   private int highLightColor;
   private int backgroundColor;
@@ -149,9 +149,7 @@ public class MLPerfEvaluation extends AppCompatActivity implements Handler.Callb
   public void onResume() {
     super.onResume();
     // Updates the shared preference.
-    interpreterDelegate =
-        sharedPref.getString(
-            getString(R.string.pref_delegate_key), getString(R.string.delegate_nnapi));
+    delegates = sharedPref.getStringSet(getString(R.string.pref_delegate_key), null);
     numThreadsPreference =
         Integer.parseInt(
             sharedPref.getString(
@@ -235,7 +233,9 @@ public class MLPerfEvaluation extends AppCompatActivity implements Handler.Callb
         TaskConfig task = mlperfTasks.getTask(taskIdx);
         for (int modelIdx = 0; modelIdx < task.getModelCount(); ++modelIdx) {
           if (selectedModels.contains(task.getModel(modelIdx).getName())) {
-            scheduleInference(taskIdx, modelIdx);
+            for (String delegate : delegates) {
+              scheduleInference(taskIdx, modelIdx, delegate);
+            }
           }
         }
       }
@@ -304,7 +304,7 @@ public class MLPerfEvaluation extends AppCompatActivity implements Handler.Callb
   }
 
   // Schedule a inference task with WorkManager for the given model.
-  private void scheduleInference(int taskIdx, int modelIdx) {
+  private void scheduleInference(int taskIdx, int modelIdx, String delegate) {
     Log.d(TAG, "scheduleInference " + taskIdx + " , " + modelIdx);
     TaskConfig task = mlperfTasks.getTask(taskIdx);
     final String modelName = task.getModel(modelIdx).getName();
@@ -312,12 +312,12 @@ public class MLPerfEvaluation extends AppCompatActivity implements Handler.Callb
     Log.i(TAG, "The mlperf log dir for \"" + modelName + "\" is " + outputLogDir + "/");
     RunMLPerfWorker.WorkerData data =
         new RunMLPerfWorker.WorkerData(
-            taskIdx, modelIdx, numThreadsPreference, interpreterDelegate, outputLogDir);
+            taskIdx, modelIdx, numThreadsPreference, delegate, outputLogDir);
     Message msg = workerHandler.obtainMessage(RunMLPerfWorker.MSG_RUN, data);
     msg.replyTo = replyMessenger;
     workerHandler.sendMessage(msg);
     progressCount.increaseTotal();
-    logProgress("Worker for \"" + modelName + "\" scheduled.");
+    logProgress("Worker for \"" + modelName + "\" with delegate: " + delegate + " scheduled.");
   }
 
   private static class ProgressCount {

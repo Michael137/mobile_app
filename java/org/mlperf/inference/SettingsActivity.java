@@ -27,7 +27,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 import androidx.preference.DialogPreference;
 import androidx.preference.EditTextPreference;
-import androidx.preference.ListPreference;
+import androidx.preference.MultiSelectListPreference;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceDialogFragmentCompat;
 import androidx.preference.PreferenceFragmentCompat;
@@ -82,7 +82,7 @@ public class SettingsActivity extends AppCompatActivity {
           });
 
       // Add NNAPI options to delegate setttings.
-      ListPreference delegatePreference =
+      MultiSelectListPreference delegatePreference =
           getPreferenceManager().findPreference(getString(R.string.pref_delegate_key));
       ArrayList<String> devices = MLPerfDriverWrapper.listDevicesForNNAPI();
       ArrayList<CharSequence> entries =
