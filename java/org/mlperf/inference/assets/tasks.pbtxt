@@ -21,13 +21,6 @@ task {
     offset: 1
     tags: "float32"
   }
-  model {
-    name: "MobileNets-v1 224 F16"
-    src: "https://github.com/mlperf/mobile_app/raw/model_repo_v0.5/tflite/mobilenet_v1_224_f16.tflite"
-    path: "/sdcard/mlperf_datasets/mobilenet_v1_224_f16.tflite"
-    offset: 1
-    tags: "float16"
-  }
   min_query_count: 100
   min_duration_ms: 1000
 }
@@ -54,13 +47,6 @@ task {
     path: "/sdcard/mlperf_datasets/ssd_mobilenet_v1_300_f32.tflite"
     offset: 1
     tags: "float32"
-  }
-  model {
-    name: "SSD-MobileNets-v1 F16"
-    src: "https://github.com/mlperf/mobile_app/raw/model_repo_v0.5/tflite/ssd_mobilenet_v1_300_f16.tflite"
-    path: "/sdcard/mlperf_datasets/ssd_mobilenet_v1_300_f16.tflite"
-    offset: 1
-    tags: "float16"
   }
   min_query_count: 100
   min_duration_ms: 1000
