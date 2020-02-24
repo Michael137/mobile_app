@@ -48,6 +48,7 @@ import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -437,13 +438,13 @@ public class MLPerfEvaluation extends AppCompatActivity implements Handler.Callb
     if (!modelIsAvailable) {
       for (TaskConfig task : mlperfTasks.getTaskList()) {
         for (ModelConfig model : task.getModelList()) {
-          if (!new File(model.getPath()).canRead()) {
+          if (!new File(MLPerfTasks.getLocalPath(model.getSrc())).canRead()) {
             new ModelExtractTask(MLPerfEvaluation.this, mlperfTasks).execute();
             return false;
           }
         }
         DatasetConfig dataset = task.getDataset();
-        if (!new File(dataset.getGroundtruthPath()).canRead()) {
+        if (!new File(MLPerfTasks.getLocalPath(dataset.getGroundtruthSrc())).canRead()) {
           new ModelExtractTask(MLPerfEvaluation.this, mlperfTasks).execute();
           return false;
         }
@@ -462,7 +463,6 @@ public class MLPerfEvaluation extends AppCompatActivity implements Handler.Callb
   // ModelExtractTask copies or downloads files to their location (external storage) when
   // they're not available.
   private static class ModelExtractTask extends AsyncTask<Void, Void, Void> {
-
     private final WeakReference<Context> contextRef;
     private final MLPerfConfig mlperfTasks;
     private boolean success = true;
@@ -476,15 +476,15 @@ public class MLPerfEvaluation extends AppCompatActivity implements Handler.Callb
     protected Void doInBackground(Void... voids) {
       for (TaskConfig task : mlperfTasks.getTaskList()) {
         for (ModelConfig model : task.getModelList()) {
-          if (!new File(model.getPath()).canRead()) {
-            if (!extractFile(model.getSrc(), model.getPath())) {
+          if (!new File(MLPerfTasks.getLocalPath(model.getSrc())).canRead()) {
+            if (!extractFile(model.getSrc())) {
               success = false;
             }
           }
         }
         DatasetConfig dataset = task.getDataset();
-        if (!new File(dataset.getGroundtruthPath()).canRead()) {
-          if (!extractFile(dataset.getGroundtruthSrc(), dataset.getGroundtruthPath())) {
+        if (!new File(MLPerfTasks.getLocalPath(dataset.getGroundtruthSrc())).canRead()) {
+          if (!extractFile(dataset.getGroundtruthSrc())) {
             success = false;
           }
         }
@@ -492,12 +492,13 @@ public class MLPerfEvaluation extends AppCompatActivity implements Handler.Callb
       return null;
     }
 
-    private boolean extractFile(String src, String path) {
-      File destFile = new File(path);
+    private boolean extractFile(String src) {
+      String dest = MLPerfTasks.getLocalPath(src);
+      File destFile = new File(dest);
       Log.d(TAG, "Preparing " + destFile.getName());
       destFile.getParentFile().mkdirs();
       // Extract to a temporary file first, so the app can detects if the extraction failed.
-      File tmpFile = new File(path + ".tmp");
+      File tmpFile = new File(dest + ".tmp");
       try {
         InputStream in;
         if (src.startsWith(ASSETS_PREFIX)) {
@@ -506,14 +507,13 @@ public class MLPerfEvaluation extends AppCompatActivity implements Handler.Callb
         } else if (src.startsWith("http://") || src.startsWith("https://")) {
           in = new URL(src).openStream();
         } else {
-          Log.e(TAG, "Malformed path: " + src);
-          return false;
+          in = new FileInputStream(src);
         }
         OutputStream out = new FileOutputStream(tmpFile, /*append=*/ false);
         copyFile(in, out);
         tmpFile.renameTo(destFile);
       } catch (IOException e) {
-        Log.e(TAG, "Failed to prepare file: " + path, e);
+        Log.e(TAG, "Failed to prepare file: " + dest, e);
         return false;
       }
 

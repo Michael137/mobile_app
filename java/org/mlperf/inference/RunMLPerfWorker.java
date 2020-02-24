@@ -77,7 +77,8 @@ public final class RunMLPerfWorker implements Handler.Callback {
     replyWithUpdateMessage(messenger, " - runtime: " + runtime, REPLY_UPDATE);
     try {
       MLPerfDriverWrapper.Builder builder = new MLPerfDriverWrapper.Builder();
-      builder.useTfliteBackend(modelConfig.getPath(), data.numThreads, data.delegate);
+      builder.useTfliteBackend(
+          MLPerfTasks.getLocalPath(modelConfig.getSrc()), data.numThreads, data.delegate);
       if (useDummyDataSet) {
         builder.useDummy();
       } else {
@@ -85,7 +86,7 @@ public final class RunMLPerfWorker implements Handler.Callback {
           case IMAGENET:
             builder.useImagenet(
                 dataset.getPath(),
-                dataset.getGroundtruthPath(),
+                MLPerfTasks.getLocalPath(dataset.getGroundtruthSrc()),
                 modelConfig.getOffset(),
                 /*imageWidth=*/ 224,
                 /*imageHeight=*/ 224);
@@ -93,7 +94,7 @@ public final class RunMLPerfWorker implements Handler.Callback {
           case COCO:
             builder.useCoco(
                 dataset.getPath(),
-                dataset.getGroundtruthPath(),
+                MLPerfTasks.getLocalPath(dataset.getGroundtruthSrc()),
                 modelConfig.getOffset(),
                 /*numClasses=*/ 91,
                 /*imageWidth=*/ 300,
