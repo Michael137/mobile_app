@@ -23,7 +23,9 @@ limitations under the License.
 #include "cpp/datasets/coco.h"
 #include "cpp/datasets/dummy_dataset.h"
 #include "cpp/datasets/imagenet.h"
+#include "cpp/datasets/squad.h"
 #include "cpp/mlperf_driver.h"
+#include "cpp/proto/mlperf_task.pb.h"
 #include "cpp/utils.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
@@ -36,14 +38,6 @@ enum class BackendType {
   TFLITE = 1,
 };
 
-// Supported datasets.
-enum class DatasetType {
-  NONE = 0,
-  DUMMY = 1,
-  IMAGENET = 2,
-  COCO = 3,
-};
-
 BackendType Str2BackendType(absl::string_view name) {
   if (absl::EqualsIgnoreCase(name, "TFLITE")) {
     return BackendType::TFLITE;
@@ -52,15 +46,18 @@ BackendType Str2BackendType(absl::string_view name) {
   }
 }
 
-DatasetType Str2DatasetType(absl::string_view name) {
+DatasetConfig::DatasetType Str2DatasetType(absl::string_view name) {
   if (absl::EqualsIgnoreCase(name, "COCO")) {
-    return DatasetType::COCO;
+    return DatasetConfig::COCO;
   } else if (absl::EqualsIgnoreCase(name, "IMAGENET")) {
-    return DatasetType::IMAGENET;
+    return DatasetConfig::IMAGENET;
+  } else if (absl::EqualsIgnoreCase(name, "SQUAD")) {
+    return DatasetConfig::SQUAD;
   } else if (absl::EqualsIgnoreCase(name, "DUMMY")) {
-    return DatasetType::DUMMY;
+    return DatasetConfig::NONE;
   } else {
-    return DatasetType::NONE;
+    LOG(FATAL) << "Unregconized dataset type: " << name;
+    return DatasetConfig::NONE;
   }
 }
 
@@ -73,18 +70,18 @@ int Main(int argc, char* argv[]) {
   // Flags for backend and dataset.
   std::string backend_name, dataset_name;
   BackendType backend_type = BackendType::NONE;
-  DatasetType dataset_type = DatasetType::NONE;
+  DatasetConfig::DatasetType dataset_type = DatasetConfig::NONE;
   std::vector<Flag> flag_list{
       Flag::CreateFlag("backend", &backend_name,
                        "Backend. Only TFLite is supported at the moment.",
-                       Flag::POSITIONAL),
+                       Flag::kPositional),
       Flag::CreateFlag("dataset", &dataset_name,
-                       "Dataset. One of imagenet, coco or dummy.",
-                       Flag::POSITIONAL)};
+                       "Dataset. One of imagenet, coco, squad or dummy.",
+                       Flag::kPositional)};
   Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
   backend_type = Str2BackendType(backend_name);
   dataset_type = Str2DatasetType(dataset_name);
-  if (backend_type == BackendType::NONE || dataset_type == DatasetType::NONE) {
+  if (backend_type == BackendType::NONE) {
     LOG(FATAL) << Flags::Usage(command_line, flag_list);
     return 1;
   }
@@ -93,7 +90,7 @@ int Main(int argc, char* argv[]) {
   command_line += " " + backend_name + " " + dataset_name;
 
   // Command Line Flags for mlperf.
-  std::string mode, output_dir;
+  std::string mode, scenario, output_dir;
   int min_query_count = 100, min_duration = 100;
   flag_list.clear();
   flag_list.insert(
@@ -101,7 +98,7 @@ int Main(int argc, char* argv[]) {
       {Flag::CreateFlag("mode", &mode,
                         "Mode is one among PerformanceOnly, "
                         "AccuracyOnly, SubmissionRun.",
-                        Flag::REQUIRED),
+                        Flag::kRequired),
        Flag::CreateFlag("min_query_count", &min_query_count,
                         "The test will guarantee to run at least this "
                         "number of samples in performance mode."),
@@ -109,7 +106,7 @@ int Main(int argc, char* argv[]) {
                         "The test will guarantee to run at least this "
                         "duration in performance mode. The duration is in ms."),
        Flag::CreateFlag("output_dir", &output_dir,
-                        "The output directory of mlperf.", Flag::REQUIRED)});
+                        "The output directory of mlperf.", Flag::kRequired)});
 
   // Command Line Flags for backend.
   std::unique_ptr<Backend> backend;
@@ -122,15 +119,22 @@ int Main(int argc, char* argv[]) {
       flag_list.insert(
           flag_list.end(),
           {Flag::CreateFlag("model_file", &model_file_path,
-                            "Path to TFLite model file.", Flag::REQUIRED),
+                            "Path to TFLite model file.", Flag::kRequired),
            Flag::CreateFlag("num_threads", &num_threads,
                             "Number of interpreter threads for inference."),
            Flag::CreateFlag("delegate", &delegate,
                             "Delegate for inference, if available. "
-                            "Can be one value of {'nnapi', 'gpu', 'none'}.")});
+                            "Can be one value of {'nnapi', 'nnapi-{accelerator "
+                            "name}', 'gpu', 'gpu (f16)', 'none'}.")});
       if (Flags::Parse(&argc, const_cast<const char**>(argv), flag_list)) {
-        backend.reset(
-            new TfliteBackend(model_file_path, num_threads, delegate));
+        TfliteBackend* tflite_backend =
+            new TfliteBackend(model_file_path, num_threads);
+        if (tflite_backend->ApplyDelegate(delegate) != kTfLiteOk) {
+          LOG(INFO) << "Cannot apply the delegate.";
+          delete tflite_backend;
+          return 1;
+        }
+        backend.reset(tflite_backend);
       }
     } break;
     default:
@@ -140,20 +144,20 @@ int Main(int argc, char* argv[]) {
   // Command Line Flags for dataset.
   std::unique_ptr<Dataset> dataset;
   switch (dataset_type) {
-    case DatasetType::IMAGENET: {
+    case DatasetConfig::IMAGENET: {
       LOG(INFO) << "Using Imagenet dataset";
       std::string images_directory, groundtruth_file;
       int offset = 1, image_width = 224, image_height = 224;
       std::vector<Flag> dataset_flags{
           Flag::CreateFlag("images_directory", &images_directory,
-                           "Path to ground truth images.", Flag::REQUIRED),
+                           "Path to ground truth images.", Flag::kRequired),
           Flag::CreateFlag("offset", &offset,
                            "The offset of the first meaningful class in the "
                            "classification model.",
-                           Flag::REQUIRED),
+                           Flag::kRequired),
           Flag::CreateFlag("groundtruth_file", &groundtruth_file,
                            "Path to the imagenet ground truth file.",
-                           Flag::REQUIRED),
+                           Flag::kRequired),
           Flag::CreateFlag("image_width", &image_width,
                            "The width of the processed image."),
           Flag::CreateFlag("image_height", &image_height,
@@ -163,36 +167,29 @@ int Main(int argc, char* argv[]) {
         dataset.reset(new Imagenet(backend->GetInputFormat(),
                                    backend->GetOutputFormat(), images_directory,
                                    groundtruth_file, offset, image_width,
-                                   image_height));
+                                   image_height, scenario));
       }
       // Adds to flag_list for showing help.
       flag_list.insert(flag_list.end(), dataset_flags.begin(),
                        dataset_flags.end());
     } break;
-    case DatasetType::DUMMY: {
-      LOG(INFO) << "Using Dummy dataset";
-      if (backend) {
-        dataset.reset(new DummyDataset(backend->GetInputFormat(),
-                                       backend->GetOutputFormat()));
-      }
-    } break;
-    case DatasetType::COCO: {
+    case DatasetConfig::COCO: {
       LOG(INFO) << "Using Coco dataset";
       std::string images_directory, groundtruth_file;
       int offset = 1, num_classes = 91, image_width = 300, image_height = 300;
       std::vector<Flag> dataset_flags{
           Flag::CreateFlag("images_directory", &images_directory,
-                           "Path to ground truth images.", Flag::REQUIRED),
+                           "Path to ground truth images.", Flag::kRequired),
           Flag::CreateFlag("offset", &offset,
                            "The offset of the first meaningful class in the "
                            "classification model.",
-                           Flag::REQUIRED),
+                           Flag::kRequired),
           Flag::CreateFlag("num_classes", &num_classes,
                            "The number of classes in the model outputs.",
-                           Flag::REQUIRED),
+                           Flag::kRequired),
           Flag::CreateFlag("groundtruth_file", &groundtruth_file,
                            "Path to the imagenet ground truth file.",
-                           Flag::REQUIRED),
+                           Flag::kRequired),
           Flag::CreateFlag("image_width", &image_width,
                            "The width of the processed image."),
           Flag::CreateFlag("image_height", &image_height,
@@ -208,6 +205,38 @@ int Main(int argc, char* argv[]) {
       flag_list.insert(flag_list.end(), dataset_flags.begin(),
                        dataset_flags.end());
     } break;
+    case DatasetConfig::SQUAD: {
+      LOG(INFO) << "Using SQuAD 1.1 dataset for MobileBert.";
+      std::string input_tfrecord, gt_tfrecord;
+      std::vector<Flag> dataset_flags{
+          Flag::CreateFlag(
+              "input_file", &input_tfrecord,
+              "Path to the tfrecord file containing inputs for the model.",
+              Flag::kRequired),
+          Flag::CreateFlag(
+              "groundtruth_file", &gt_tfrecord,
+              "Path to the tfrecord file containing ground truth data.",
+              Flag::kRequired),
+      };
+
+      if (Flags::Parse(&argc, const_cast<const char**>(argv), dataset_flags) &&
+          backend) {
+        dataset.reset(new Squad(backend->GetInputFormat(),
+                                backend->GetOutputFormat(), input_tfrecord,
+                                gt_tfrecord));
+      }
+      // Adds to flag_list for showing help.
+      flag_list.insert(flag_list.end(), dataset_flags.begin(),
+                       dataset_flags.end());
+    } break;
+    case DatasetConfig::NONE: {
+      LOG(INFO) << "Using Dummy dataset";
+      if (backend) {
+        dataset.reset(new DummyDataset(backend->GetInputFormat(),
+                                       backend->GetOutputFormat(),
+                                       dataset_type));
+      }
+    } break;
     default:
       break;
   }
@@ -218,13 +247,14 @@ int Main(int argc, char* argv[]) {
     return 1;
   }
   // If using the dummy dataset, only run the performance mode.
-  if (dataset_type == DatasetType::DUMMY) {
+  if (dataset_type == DatasetConfig::NONE) {
     mode = "PerformanceOnly";
   }
 
   // Running mlperf.
   MlperfDriver driver(std::move(dataset), std::move(backend));
-  driver.RunMLPerfTest(mode, min_query_count, min_duration, output_dir);
+  driver.RunMLPerfTest(mode, scenario, min_query_count, min_duration,
+                       output_dir);
   LOG(INFO) << "90 percentile latency: " << driver.ComputeLatencyString();
   LOG(INFO) << "Accuracy: " << driver.ComputeAccuracyString();
   return 0;
