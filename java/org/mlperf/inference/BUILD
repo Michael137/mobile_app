@@ -39,6 +39,7 @@ android_library(
     srcs = [
         "MLPerfEvaluation.java",
         "MLPerfTasks.java",
+        "ModelsPreference.java",
         "ResultHolder.java",
         "ResultsAdapter.java",
         "RunMLPerfWorker.java",
@@ -65,6 +66,7 @@ android_binary(
         "assets/*.tflite",
         "assets/*.txt",
         "assets/*.pbtxt",
+        "assets/*.tfrecord",
     ]),
     assets_dir = "assets",
     manifest = "AndroidManifest.xml",
@@ -96,6 +98,7 @@ android_library(
     manifest = "AndroidManifest.xml",
     deps = [
         ":evaluation_native",
+        ":mlperf_task_java_proto_lite",
     ],
 )
 
